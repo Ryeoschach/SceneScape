@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - VITE_API_BASE_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - scenescape-network
+
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./database:/app/database
+      - ./backend/static:/app/static
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=sqlite:///./database/media.db
+      - TMDB_API_KEY=${TMDB_API_KEY}
+    env_file:
+      - ./backend/.env
+    networks:
+      - scenescape-network
+
+networks:
+  scenescape-network:
+    driver: bridge
+
+volumes:
+  media_data:
+    driver: local
+  static_files:
+    driver: local

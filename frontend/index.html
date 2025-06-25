@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="SceneScape - 智能影视媒体库管理系统，类似Infuse的现代化媒体管理工具" />
+  <meta name="keywords" content="媒体库,影视管理,电影,电视剧,SceneScape,Infuse" />
+  <meta name="author" content="SceneScape Team" />
+  
+  <!-- Open Graph Meta Tags -->
+  <meta property="og:title" content="SceneScape - 智能影视媒体库" />
+  <meta property="og:description" content="现代化的影视媒体库管理系统，智能整理您的电影和电视剧收藏" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="/" />
+  
+  <!-- Twitter Card Meta Tags -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="SceneScape - 智能影视媒体库" />
+  <meta name="twitter:description" content="现代化的影视媒体库管理系统，智能整理您的电影和电视剧收藏" />
+  
+  <!-- App Icons -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  
+  <!-- App Manifest -->
+  <link rel="manifest" href="/manifest.json" />
+  
+  <!-- Theme Color -->
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="color-scheme" content="dark light" />
+  
+  <!-- Preconnect to external domains -->
+  <link rel="preconnect" href="https://api.themoviedb.org" />
+  <link rel="preconnect" href="https://image.tmdb.org" />
+  
+  <!-- Title -->
+  <title>SceneScape - 智能影视媒体库</title>
+  
+  <!-- Inline critical CSS to prevent FOUC -->
+  <style>
+    /* Critical CSS for initial render */
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    
+    html {
+      line-height: 1.15;
+      -webkit-text-size-adjust: 100%;
+    }
+    
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      background-color: #0f172a;
+      color: #f8fafc;
+    }
+    
+    /* Loading screen */
+    #app-loading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    
+    .loading-logo {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 24px;
+      background: linear-gradient(45deg, #3b82f6, #8b5cf6, #ec4899);
+      border-radius: 20px;
+      position: relative;
+      animation: pulse 2s infinite;
+    }
+    
+    .loading-logo::before {
+      content: '🎬';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 32px;
+    }
+    
+    .loading-text {
+      font-size: 18px;
+      font-weight: 600;
+      color: #f8fafc;
+      margin-bottom: 16px;
+    }
+    
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #1e293b;
+      border-top: 3px solid #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.8; transform: scale(1.05); }
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    /* Hide loading screen when app is ready */
+    .app-ready #app-loading {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease-out;
+    }
+    
+    /* Initial app container */
+    #root {
+      min-height: 100vh;
+    }
+    
+    /* Dark mode by default */
+    :root {
+      --color-primary: #3b82f6;
+      --color-primary-dark: #2563eb;
+      --color-secondary: #8b5cf6;
+      --color-accent: #ec4899;
+      --color-success: #10b981;
+      --color-warning: #f59e0b;
+      --color-error: #ef4444;
+      
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-tertiary: #334155;
+      
+      --text-primary: #f8fafc;
+      --text-secondary: #e2e8f0;
+      --text-tertiary: #cbd5e1;
+      
+      --border-color: #334155;
+      --border-color-light: #475569;
+    }
+    
+    /* Light mode overrides */
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg-primary: #ffffff;
+        --bg-secondary: #f8fafc;
+        --bg-tertiary: #f1f5f9;
+        
+        --text-primary: #0f172a;
+        --text-secondary: #334155;
+        --text-tertiary: #64748b;
+        
+        --border-color: #e2e8f0;
+        --border-color-light: #cbd5e1;
+      }
+      
+      body {
+        background-color: var(--bg-primary);
+        color: var(--text-primary);
+      }
+      
+      #app-loading {
+        background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+      }
+      
+      .loading-text {
+        color: var(--text-primary);
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- App Root -->
+  <div id="root"></div>
+  
+  <!-- Loading Screen -->
+  <div id="app-loading">
+    <div class="loading-logo"></div>
+    <div class="loading-text">SceneScape</div>
+    <div class="loading-spinner"></div>
+  </div>
+  
+  <!-- Environment Detection Script -->
+  <script>
+    // Detect environment and set global variables
+    window.__SCENESCAPE_ENV__ = {
+      isDevelopment: location.hostname === 'localhost' || location.hostname === '127.0.0.1',
+      apiBaseUrl: location.hostname === 'localhost' || location.hostname === '127.0.0.1' 
+        ? 'http://localhost:8000' 
+        : '',
+      version: '1.0.0',
+      buildTime: new Date().toISOString()
+    };
+    
+    // Performance monitoring
+    window.__PERFORMANCE_MARKS__ = {};
+    window.__PERFORMANCE_MARKS__.htmlLoadStart = performance.now();
+    
+    // Error handling for uncaught exceptions
+    window.addEventListener('error', function(event) {
+      console.error('Global error caught:', event.error);
+      
+      // In production, you might want to send this to an error tracking service
+      if (!window.__SCENESCAPE_ENV__.isDevelopment) {
+        // Example: sendErrorToService(event.error);
+      }
+    });
+    
+    // Unhandled promise rejection handling
+    window.addEventListener('unhandledrejection', function(event) {
+      console.error('Unhandled promise rejection:', event.reason);
+      
+      // Prevent the default browser handling
+      event.preventDefault();
+      
+      // In production, you might want to send this to an error tracking service
+      if (!window.__SCENESCAPE_ENV__.isDevelopment) {
+        // Example: sendErrorToService(event.reason);
+      }
+    });
+    
+    // Theme detection and application
+    function detectAndApplyTheme() {
+      const savedTheme = localStorage.getItem('scenescape-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = savedTheme || (prefersDark ? 'dark' : 'light');
+      
+      document.documentElement.classList.toggle('dark', theme === 'dark');
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+    
+    // Apply theme immediately to prevent flash
+    detectAndApplyTheme();
+    
+    // Listen for theme changes
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+      if (!localStorage.getItem('scenescape-theme')) {
+        detectAndApplyTheme();
+      }
+    });
+    
+    // Remove loading screen when app is ready
+    window.addEventListener('load', function() {
+      // Mark performance
+      window.__PERFORMANCE_MARKS__.htmlLoadComplete = performance.now();
+      
+      // Wait a bit for React to mount, then hide loading screen
+      setTimeout(function() {
+        document.body.classList.add('app-ready');
+        
+        // Remove loading screen after transition
+        setTimeout(function() {
+          const loadingScreen = document.getElementById('app-loading');
+          if (loadingScreen) {
+            loadingScreen.remove();
+          }
+        }, 300);
+      }, 100);
+    });
+    
+    // Service Worker registration (for PWA support)
+    if ('serviceWorker' in navigator && !window.__SCENESCAPE_ENV__.isDevelopment) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js')
+          .then(function(registration) {
+            console.log('SW registered: ', registration);
+          })
+          .catch(function(registrationError) {
+            console.log('SW registration failed: ', registrationError);
+          });
+      });
+    }
+  </script>
+  
+  <!-- Main Application Script -->
+  <script type="module" src="/src/main.tsx"></script>
+  
+  <!-- NoScript Fallback -->
+  <noscript>
+    <div style="
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      text-align: center;
+      padding: 20px;
+      z-index: 10000;
+    ">
+      <div style="
+        background: linear-gradient(45deg, #3b82f6, #8b5cf6, #ec4899);
+        width: 80px;
+        height: 80px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+        margin-bottom: 24px;
+      ">🎬</div>
+      <h1 style="margin: 0 0 16px 0; font-size: 24px; font-weight: 600;">
+        SceneScape
+      </h1>
+      <p style="margin: 0 0 24px 0; font-size: 16px; opacity: 0.8; max-width: 400px;">
+        此应用需要启用 JavaScript 才能正常运行。<br>
+        请在浏览器设置中启用 JavaScript 并刷新页面。
+      </p>
+      <p style="margin: 0; font-size: 14px; opacity: 0.6;">
+        This app requires JavaScript to be enabled.<br>
+        Please enable JavaScript in your browser settings and refresh the page.
+      </p>
+    </div>
+  </noscript>
+</body>
+</html>

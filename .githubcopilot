@@ -1,0 +1,565 @@
+
+影视媒体库应用开发文档1. 项目简介本项目旨在开发一个类似 Infuse 的影视媒体库应用，通过友好的图形化界面展示本地或网络存储的电影和电视剧，并自动从在线数据库（TMDb）获取丰富的元数据（海报、简介、演职人员等）。核心技术栈：前端： React (Web，为未来 Android/iOS 部署打下基础)后端： FastAPI (Python)数据库： SQLite (轻量级，文件型数据库)元数据源： The Movie Database (TMDb) API2. 架构概览该应用将采用前后端分离的架构。影视媒体库应用架构图的图片前端 (React App)：负责用户界面的渲染和交互。通过 HTTP 请求与 FastAPI 后端进行通信。展示影视墙、详情页、搜索结果等。后端 (FastAPI Server)：提供 RESTful API 接口供前端调用。处理媒体文件扫描、元数据刮削、数据存储和查询等核心逻辑。与 SQLite 数据库交互。通过 requests 库调用 TMDb API。数据库 (SQLite)：存储媒体文件的元数据和本地路径信息。嵌入在后端服务中，无需单独的数据库服务器。媒体文件：用户本地存储的电影和电视剧文件（如硬盘、NAS 等）。后端会扫描这些文件。TMDb API：提供全球影视作品的元数据，是刮削信息的主要来源。3. 前端 (React) 开发前端将构建用户界面，负责数据的展示和用户交互。3.1 项目设置你可以使用 Vite 或 Create React App (CRA) 来初始化项目。Vite 更轻量和快速，这里推荐使用 Vite。# 使用 Vite 创建 React 项目
+npm create vite@latest my-media-frontend -- --template react-ts
+cd my-media-frontend
+npm install
+
+# 安装必要的库
+npm install axios # 用于HTTP请求
+npm install react-router-dom # 用于页面路由
+npm install tailwindcss postcss autoprefixer # 用于CSS样式 (推荐)
+npx tailwindcss init -p # 初始化 Tailwind CSS
+配置 tailwind.config.js：// tailwind.config.js
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+在 src/index.css 或 src/App.css 顶部添加 Tailwind CSS 指令：/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+3.2 核心 UI 组件App.tsx (主应用容器):设置 React Router，定义路由规则。例如，/ 用于媒体库主页，/movie/:id 用于电影详情页，/tv/:id 用于电视剧详情页。HomePage.tsx (媒体库主页):展示电影和电视剧的海报墙。可能包含分类（电影、电视剧）、筛选、排序、搜索框。通过 useEffect 调用后端 API 获取媒体列表。MediaCard.tsx (媒体卡片组件):显示单个电影或电视剧的海报、标题、评分等信息。点击卡片跳转到详情页。使用 img 标签加载海报，注意图片加载优化（懒加载）。DetailPage.tsx (电影/电视剧详情页):显示影片的详细信息：背景图、海报、简介、演职人员、评分、类型、发布日期等。通过 URL 参数获取影片 ID，然后调用后端 API 获取详细信息。SearchBar.tsx (搜索组件):接收用户输入，实时或按回车触发搜索请求。向后端发送搜索请求，并更新媒体列表。3.3 状态管理对于小型应用，useState 和 useContext 即可满足需求。对于更复杂的库，可以考虑使用像 Zustand 或 Jotai 这样的轻量级状态管理库。3.4 API 服务层创建一个 api.ts 文件来封装所有与后端 FastAPI 的 HTTP 请求，方便管理和维护。// src/services/api.ts
+import axios from 'axios';
+
+const API_BASE_URL = 'http://localhost:8000'; // 后端 FastAPI 地址
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+export const getMovies = async () => {
+  const response = await api.get('/movies');
+  return response.data;
+};
+
+export const getMovieDetail = async (id: string) => {
+  const response = await api.get(`/movies/${id}`);
+  return response.data;
+};
+
+export const startScan = async (path: string) => {
+  const response = await api.post('/scan', { path });
+  return response.data;
+};
+
+export const searchMedia = async (query: string) => {
+  const response = await api.get(`/search?query=${query}`);
+  return response.data;
+};
+
+// 更多 API 接口 (电视剧, 更新, 删除等)
+
+export default api;
+3.5 部署考虑Web 部署： 直接构建为静态文件 (npm run build)，部署到任何 Web 服务器或 CDN。桌面应用 (Electron / Tauri)： 可以将 React Web 应用打包成桌面应用。Electron： 成熟稳定，打包后体积较大。Tauri： 更轻量级，性能更好，使用 Rust 作为后端。移动应用 (React Native)： 如果未来希望部署到 Android/iOS，可能需要考虑使用 React Native 重新构建移动端部分，或者使用 Capacitor / Cordova 将 Web 应用封装成原生应用，但性能和原生体验可能受限。如果追求最佳移动体验，直接使用 React Native 是更彻底的方案。4. 后端 (FastAPI) 开发后端将负责处理数据逻辑、与数据库交互以及调用外部 API。4.1 项目设置# 创建项目目录
+mkdir my-media-backend
+cd my-media-backend
+
+# 创建并激活虚拟环境
+python3 -m venv .venv
+source .venv/bin/activate # macOS/Linux
+# .venv\Scripts\activate # Windows
+
+# 安装必要的库
+pip install fastapi uvicorn[standard] sqlalchemy requests
+pip install "python-dotenv" # 用于管理API Key等环境变量
+4.2 数据库模式 (SQLite + SQLAlchemy ORM)使用 SQLAlchemy 作为 ORM 来定义数据库模型，它能让你用 Python 对象来操作数据库。# app/database.py
+from sqlalchemy import create_engine, Column, Integer, String, Float, Text, Boolean
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy import ForeignKey, Table
+
+import os
+
+DATABASE_FILE = os.path.join(os.path.dirname(__file__), "media.db")
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{DATABASE_FILE}"
+
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False} # SQLite only, for FastAPI
+)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# 多对多关系辅助表
+movie_genre_association = Table(
+    'movie_genre_association', Base.metadata,
+    Column('movie_id', Integer, ForeignKey('movies.id')),
+    Column('genre_id', Integer, ForeignKey('genres.id'))
+)
+
+tv_show_genre_association = Table(
+    'tv_show_genre_association', Base.metadata,
+    Column('tv_show_id', Integer, ForeignKey('tv_shows.id')),
+    Column('genre_id', Integer, ForeignKey('genres.id'))
+)
+
+class Movie(Base):
+    __tablename__ = "movies"
+    id = Column(Integer, primary_key=True, index=True)
+    tmdb_id = Column(Integer, unique=True, index=True) # TMDb ID
+    title = Column(String, index=True)
+    original_title = Column(String)
+    release_date = Column(String)
+    overview = Column(Text)
+    poster_path = Column(String) # 海报路径
+    backdrop_path = Column(String) # 背景图路径
+    vote_average = Column(Float)
+    runtime = Column(Integer) # 片长 (分钟)
+    local_path = Column(String, unique=True) # 本地文件路径
+
+    genres = relationship("Genre", secondary=movie_genre_association, back_populates="movies")
+    cast = relationship("CastMember", back_populates="movie") # 演员表
+
+
+class TVShow(Base):
+    __tablename__ = "tv_shows"
+    id = Column(Integer, primary_key=True, index=True)
+    tmdb_id = Column(Integer, unique=True, index=True)
+    name = Column(String, index=True)
+    original_name = Column(String)
+    first_air_date = Column(String)
+    overview = Column(Text)
+    poster_path = Column(String)
+    backdrop_path = Column(String)
+    vote_average = Column(Float)
+    number_of_seasons = Column(Integer)
+    number_of_episodes = Column(Integer)
+    local_path = Column(String, unique=True) # 电视剧根目录路径
+
+    genres = relationship("Genre", secondary=tv_show_genre_association, back_populates="tv_shows")
+    seasons = relationship("TVSeason", back_populates="tv_show", order_by="TVSeason.season_number")
+
+
+class TVSeason(Base):
+    __tablename__ = "tv_seasons"
+    id = Column(Integer, primary_key=True, index=True)
+    tmdb_id = Column(Integer, unique=True)
+    tv_show_id = Column(Integer, ForeignKey('tv_shows.id'))
+    season_number = Column(Integer)
+    name = Column(String)
+    overview = Column(Text)
+    poster_path = Column(String)
+    air_date = Column(String)
+
+    tv_show = relationship("TVShow", back_populates="seasons")
+    episodes = relationship("TVEpisode", back_populates="season", order_by="TVEpisode.episode_number")
+
+
+class TVEpisode(Base):
+    __tablename__ = "tv_episodes"
+    id = Column(Integer, primary_key=True, index=True)
+    tmdb_id = Column(Integer, unique=True)
+    season_id = Column(Integer, ForeignKey('tv_seasons.id'))
+    episode_number = Column(Integer)
+    name = Column(String)
+    overview = Column(Text)
+    still_path = Column(String) # 剧集截图路径
+    air_date = Column(String)
+    runtime = Column(Integer)
+    local_path = Column(String, unique=True) # 单集文件路径
+
+    season = relationship("TVSeason", back_populates="episodes")
+
+
+class Genre(Base):
+    __tablename__ = "genres"
+    id = Column(Integer, primary_key=True, index=True)
+    tmdb_id = Column(Integer, unique=True)
+    name = Column(String, unique=True)
+
+    movies = relationship("Movie", secondary=movie_genre_association, back_populates="genres")
+    tv_shows = relationship("TVShow", secondary=tv_show_genre_association, back_populates="genres")
+
+
+class CastMember(Base):
+    __tablename__ = "cast_members"
+    id = Column(Integer, primary_key=True, index=True)
+    tmdb_id = Column(Integer, unique=True)
+    name = Column(String)
+    character = Column(String)
+    profile_path = Column(String) # 演员头像
+    order = Column(Integer)
+
+    movie_id = Column(Integer, ForeignKey('movies.id'), nullable=True)
+    movie = relationship("Movie", back_populates="cast")
+
+    # 可以扩展支持电视剧演职人员
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# 创建所有表
+Base.metadata.create_all(bind=engine)
+4.3 TMDb API 集成你需要从 TMDb 官网（themoviedb.org）注册并获取一个 API Key。将 API Key 存储在环境变量或 .env 文件中。# app/tmdb_api.py
+import requests
+import os
+from dotenv import load_dotenv
+
+load_dotenv() # 加载 .env 文件中的环境变量
+
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+TMDB_BASE_URL = "https://api.themoviedb.org/3"
+TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/"
+
+def fetch_from_tmdb(endpoint: str, params: dict = None):
+    url = f"{TMDB_BASE_URL}/{endpoint}"
+    headers = {
+        "Authorization": f"Bearer {TMDB_API_KEY}", # 使用Bearer Token更安全
+        "Content-Type": "application/json;charset=utf-8"
+    }
+    response = requests.get(url, headers=headers, params=params)
+    response.raise_for_status() # Raises HTTPError for bad responses (4xx or 5xx)
+    return response.json()
+
+def search_movie(query: str, year: int = None):
+    params = {"query": query, "language": "zh-CN"}
+    if year:
+        params["year"] = year
+    data = fetch_from_tmdb("search/movie", params)
+    return data["results"]
+
+def get_movie_details(movie_id: int):
+    # append_to_response 可以获取更多相关数据，如演职人员、预告片等
+    return fetch_from_tmdb(f"movie/{movie_id}", {"language": "zh-CN", "append_to_response": "credits,videos"})
+
+def search_tv_show(query: str, year: int = None):
+    params = {"query": query, "language": "zh-CN"}
+    if year:
+        params["first_air_date_year"] = year
+    data = fetch_from_tmdb("search/tv", params)
+    return data["results"]
+
+def get_tv_show_details(tv_id: int):
+    return fetch_from_tmdb(f"tv/{tv_id}", {"language": "zh-CN", "append_to_response": "credits,videos,seasons"})
+
+def get_episode_details(tv_id: int, season_number: int, episode_number: int):
+    return fetch_from_tmdb(f"tv/{tv_id}/season/{season_number}/episode/{episode_number}", {"language": "zh-CN"})
+
+def get_image_url(path: str, size: str = "w500"):
+    if path:
+        return f"{TMDB_IMAGE_BASE_URL}{size}{path}"
+    return None
+
+# 在 .env 文件中设置 TMDb API Key
+# TMDB_API_KEY=YOUR_TMDB_API_KEY_V4_TOKEN_OR_V3_KEY
+# 推荐使用v4的Bearer Token (API Read Access Token)
+4.4 文件名解析（Media File Parser）这是智能识别媒体文件的关键。你可以使用正则表达式或专门的库来解析文件名。# app/media_parser.py
+import re
+import os
+
+def parse_movie_filename(filename: str):
+    # 示例: "Movie Title (YYYY).ext", "Movie.Title.YYYY.ext"
+    # 尽可能捕获标题和年份
+    match = re.match(r"^(.*?)(?:[.\s-_]|\()(\d{4})(?:\)|[\s-_]|\.).*$", filename, re.IGNORECASE)
+    if match:
+        title = re.sub(r"[._]", " ", match.group(1)).strip()
+        year = int(match.group(2))
+        return title, year
+    # 尝试没有年份的匹配
+    match = re.match(r"^(.*?)\.\w{2,4}$", filename, re.IGNORECASE)
+    if match:
+        title = re.sub(r"[._]", " ", match.group(1)).strip()
+        return title, None
+    return None, None
+
+def parse_tv_episode_filename(filename: str):
+    # 示例: "Show Name S01E02.ext", "Show.Name.S01.E02.ext", "Show.Name.1x02.ext"
+    match = re.match(r"^(.*?)(?:[sS](\d+)[eE](\d+)|(\d+)x(\d+)).*$", filename, re.IGNORECASE)
+    if match:
+        title = re.sub(r"[._]", " ", match.group(1)).strip()
+        if match.group(2) and match.group(3):
+            season = int(match.group(2))
+            episode = int(match.group(3))
+        elif match.group(4) and match.group(5):
+            season = int(match.group(4))
+            episode = int(match.group(5))
+        return title, season, episode
+    return None, None, None
+
+def identify_media_type(path: str):
+    # 简单判断是电影文件还是电视剧文件/文件夹
+    # 更复杂的判断可能需要扫描文件内容或依赖文件夹结构
+    if re.search(r"[sS]\d+[eE]\d+|\d+x\d+", os.path.basename(path), re.IGNORECASE):
+        return "tv_episode"
+    # 检查是否是常见的视频文件扩展名
+    if any(path.lower().endswith(ext) for ext in ['.mp4', '.mkv', '.avi', '.mov', '.wmv']):
+        return "movie"
+    return "unknown" # 或者可以区分tv_show_folder
+4.5 FastAPI 主应用# app/main.py
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from .database import Base, engine, get_db, Movie, TVShow, TVSeason, TVEpisode, Genre, CastMember
+from .tmdb_api import search_movie, get_movie_details, search_tv_show, get_tv_show_details, get_episode_details, get_image_url
+from .media_parser import parse_movie_filename, parse_tv_episode_filename, identify_media_type
+import os
+import asyncio
+from pydantic import BaseModel
+import shutil # 用于图片下载
+
+app = FastAPI()
+
+# 允许跨域请求 (React 前端通常运行在不同端口)
+origins = [
+    "http://localhost",
+    "http://localhost:5173", # Vite 默认端口
+    "http://127.0.0.1:5173",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 确保数据库表已创建
+@app.on_event("startup")
+async def startup_event():
+    Base.metadata.create_all(bind=engine)
+    print("Database tables created/checked.")
+
+# Pydantic 模型用于请求体和响应
+class ScanPathRequest(BaseModel):
+    path: str
+
+class MediaItemResponse(BaseModel):
+    id: int
+    title: str
+    poster_path: str
+    release_date: str
+    vote_average: float
+    # 可以添加更多字段
+
+class MovieDetailResponse(MediaItemResponse):
+    overview: str
+    backdrop_path: str
+    runtime: int
+    genres: list[str]
+    cast: list[dict] # {name: str, character: str, profile_path: str}
+    local_path: str
+
+class TVShowItemResponse(BaseModel):
+    id: int
+    name: str
+    poster_path: str
+    first_air_date: str
+    vote_average: float
+    number_of_seasons: int
+    # 可以添加更多字段
+
+class TVShowDetailResponse(TVShowItemResponse):
+    overview: str
+    backdrop_path: str
+    genres: list[str]
+    seasons: list[dict] # {id: int, season_number: int, name: str, poster_path: str}
+    local_path: str
+
+class EpisodeItemResponse(BaseModel):
+    id: int
+    name: str
+    episode_number: int
+    season_number: int
+    still_path: str # 剧集截图
+    overview: str
+    air_date: str
+    runtime: int
+    local_path: str
+
+# 辅助函数：下载图片并保存到本地
+async def download_image(image_url: str, save_path: str):
+    if not image_url:
+        return None
+    try:
+        async with httpx.AsyncClient() as client: # 使用 httpx 替代 requests 进行异步请求
+            response = await client.get(image_url)
+            response.raise_for_status()
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            with open(save_path, 'wb') as f:
+                f.write(response.content)
+            return True
+    except Exception as e:
+        print(f"Error downloading image {image_url} to {save_path}: {e}")
+        return False
+
+# 后台任务：扫描和刮削
+async def perform_scan_and_scrape(base_path: str, db: Session):
+    print(f"Starting scan for path: {base_path}")
+    image_base_dir = "static/images"
+    os.makedirs(image_base_dir, exist_ok=True)
+
+    for root, _, files in os.walk(base_path):
+        for file in files:
+            file_full_path = os.path.join(root, file)
+            media_type = identify_media_type(file_full_path)
+            base_name_no_ext = os.path.splitext(file)[0]
+
+            if media_type == "movie":
+                title, year = parse_movie_filename(base_name_no_ext)
+                if not title:
+                    print(f"Skipping unrecognized movie file: {file}")
+                    continue
+
+                existing_movie = db.query(Movie).filter(Movie.local_path == file_full_path).first()
+                if existing_movie:
+                    print(f"Movie already in DB: {title}")
+                    continue
+
+                print(f"Searching movie: {title} ({year or 'N/A'})")
+                results = search_movie(title, year)
+                if results:
+                    best_match = results[0] # 简单取第一个匹配项
+                    movie_details = get_movie_details(best_match['id'])
+
+                    # 下载海报和背景图
+                    poster_url = get_image_url(movie_details.get('poster_path'), size="w500")
+                    backdrop_url = get_image_url(movie_details.get('backdrop_path'), size="w1280")
+
+                    local_poster_path = f"{image_base_dir}/posters/{best_match['id']}.jpg"
+                    local_backdrop_path = f"{image_base_dir}/backdrops/{best_match['id']}.jpg"
+
+                    if poster_url:
+                        await download_image(poster_url, local_poster_path)
+                        movie_details['poster_path'] = local_poster_path # 存储本地路径
+                    else:
+                        movie_details['poster_path'] = None
+
+                    if backdrop_url:
+                        await download_image(backdrop_url, local_backdrop_path)
+                        movie_details['backdrop_path'] = local_backdrop_path
+                    else:
+                        movie_details['backdrop_path'] = None
+
+                    new_movie = Movie(
+                        tmdb_id=movie_details['id'],
+                        title=movie_details.get('title'),
+                        original_title=movie_details.get('original_title'),
+                        release_date=movie_details.get('release_date'),
+                        overview=movie_details.get('overview'),
+                        poster_path=movie_details.get('poster_path'),
+                        backdrop_path=movie_details.get('backdrop_path'),
+                        vote_average=movie_details.get('vote_average'),
+                        runtime=movie_details.get('runtime'),
+                        local_path=file_full_path
+                    )
+                    db.add(new_movie)
+
+                    # 添加类型
+                    for tmdb_genre in movie_details.get('genres', []):
+                        genre = db.query(Genre).filter(Genre.tmdb_id == tmdb_genre['id']).first()
+                        if not genre:
+                            genre = Genre(tmdb_id=tmdb_genre['id'], name=tmdb_genre['name'])
+                            db.add(genre)
+                        new_movie.genres.append(genre)
+
+                    # 添加演职人员 (简化只取前5个)
+                    for i, tmdb_cast in enumerate(movie_details.get('credits', {}).get('cast', [])[:5]):
+                        cast_member = CastMember(
+                            tmdb_id=tmdb_cast['id'],
+                            name=tmdb_cast['name'],
+                            character=tmdb_cast['character'],
+                            profile_path=get_image_url(tmdb_cast.get('profile_path'), size="w185"),
+                            order=i
+                        )
+                        # 下载演员头像 (可选)
+                        # if cast_member.profile_path:
+                        #     local_profile_path = f"{image_base_dir}/profiles/{tmdb_cast['id']}.jpg"
+                        #     await download_image(cast_member.profile_path, local_profile_path)
+                        #     cast_member.profile_path = local_profile_path
+                        # else:
+                        #     cast_member.profile_path = None
+
+                        new_movie.cast.append(cast_member)
+                        db.add(cast_member) # 关联到电影后添加
+
+                    db.commit()
+                    db.refresh(new_movie)
+                    print(f"Added movie: {new_movie.title}")
+                else:
+                    print(f"No match found for movie: {title}")
+
+            elif media_type == "tv_episode":
+                # 电视剧处理逻辑会更复杂，需要先识别剧集，再识别季，最后识别单集
+                # 这里只做框架性提示，实际开发需要精细化处理文件夹结构和API调用
+                print(f"Detected TV episode: {file}. TV show scanning logic not fully implemented yet.")
+                # TODO: Implement TV show / episode scraping
+                pass
+            else:
+                print(f"Skipping unknown file type: {file}")
+    print("Scan complete.")
+
+
+# API 路由
+@app.post("/scan")
+async def start_media_scan(request: ScanPathRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    # 在后台执行扫描和刮削任务，避免阻塞API响应
+    background_tasks.add_task(perform_scan_and_scrape, request.path, db)
+    return {"message": f"Scan initiated for path: {request.path}. This will run in the background."}
+
+@app.get("/movies", response_model=list[MediaItemResponse])
+async def get_all_movies(db: Session = Depends(get_db)):
+    movies = db.query(Movie).all()
+    return movies
+
+@app.get("/movies/{movie_id}", response_model=MovieDetailResponse)
+async def get_movie_by_id(movie_id: int, db: Session = Depends(get_db)):
+    movie = db.query(Movie).filter(Movie.id == movie_id).first()
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found")
+    
+    genres = [g.name for g in movie.genres]
+    cast_members = [{"name": c.name, "character": c.character, "profile_path": c.profile_path} for c in movie.cast]
+
+    return MovieDetailResponse(
+        id=movie.id,
+        title=movie.title,
+        original_title=movie.original_title,
+        release_date=movie.release_date,
+        overview=movie.overview,
+        poster_path=movie.poster_path,
+        backdrop_path=movie.backdrop_path,
+        vote_average=movie.vote_average,
+        runtime=movie.runtime,
+        local_path=movie.local_path,
+        genres=genres,
+        cast=cast_members
+    )
+
+@app.get("/search", response_model=list[MediaItemResponse])
+async def search_media_api(query: str, db: Session = Depends(get_db)):
+    # 简单搜索电影 (可以扩展支持电视剧)
+    movies = db.query(Movie).filter(Movie.title.contains(query) | Movie.original_title.contains(query)).all()
+    return movies
+
+# TODO: 添加 TV Show 相关的 API 接口 (GET /tv_shows, GET /tv_shows/{id}, GET /tv_shows/{id}/seasons, GET /tv_shows/{id}/seasons/{season_number}/episodes/{episode_number})
+
+# 运行后端服务
+# uvicorn app.main:app --reload
+4.6 运行后端服务在 my-media-backend 目录下创建 .env 文件，并填入你的 TMDb API Key：TMDB_API_KEY=YOUR_TMDB_API_READ_ACCESS_TOKEN
+请使用 TMDb v4 的 Read Access Token，它以 eyJ... 开头。确保所有文件结构如下：my-media-backend/
+├── .venv/
+├── .env
+├── app/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── database.py
+│   ├── tmdb_api.py
+│   └── media_parser.py
+└── static/ # 用于存放下载的图片
+启动服务：uvicorn app.main:app --reload --port 8000
+```--reload` 选项会在代码修改时自动重启服务，方便开发。
+
+5. 开发环境搭建与运行步骤克隆或创建项目结构：按照上述 my-media-frontend 和 my-media-backend 的目录结构创建项目。后端环境搭建：进入 my-media-backend 目录。创建并激活 Python 虚拟环境：python3 -m venv .venv 和 source .venv/bin/activate。安装依赖：pip install fastapi uvicorn[standard] sqlalchemy requests python-dotenv httpx。在 my-media-backend/.env 中设置 TMDB_API_KEY=YOUR_TMDB_API_READ_ACCESS_TOKEN。启动后端服务：uvicorn app.main:app --reload --port 8000。前端环境搭建：进入 my-media-frontend 目录。安装依赖：npm install。如果使用 Tailwind CSS，确保已按 3.1 节配置。启动前端服务：npm run dev。开始使用：访问前端地址（通常是 http://localhost:5173）。在前端界面，你可以有一个输入框，输入你要扫描的本地媒体文件夹路径，然后点击“开始扫描”按钮（这会触发 POST /scan 请求到后端）。后端会开始扫描文件，刮削元数据并存储到 media.db 数据库。刷新前端页面或在主页加载媒体列表，你应该就能看到刮削到的影视墙了。6. 未来增强与挑战播放功能： 集成内置视频播放器（例如，使用 React 视频播放器库），或者提供点击播放时调用系统默认播放器的能力。进度同步： 记录播放进度，并同步到所有设备（可能需要考虑用户认证和更复杂的后端）。用户认证与多用户支持： 允许不同用户管理自己的媒体库。权限管理： 精细化控制哪些用户可以访问哪些媒体。更智能的文件识别： 增强 media_parser，处理更复杂和不规范的文件命名。本地 NFO 文件支持： 像 Infuse 和 Kodi 那样，支持从 .nfo 文件读取本地元数据。性能优化：图片大小优化： 根据设备分辨率动态加载不同尺寸的图片。API 缓存： 在前端和后端都进行数据缓存。后台任务队列： 对于刮削等耗时操作，使用 Celery 等任务队列。数据同步： 如果用户在不同设备上使用，如何同步观看进度、收藏等。Websocket 支持： 实时推送扫描进度或新添加的媒体信息到前端。错误处理与日志： 更健壮的错误处理和日志记录机制。持续集成/部署 (CI/CD)： 自动化测试、构建和部署流程。通知系统： 新媒体添加、扫描完成等通知。容器化： 使用 Docker 打包前后端服务，方便部署。开发一个功能完善的媒体库应用是一个持续迭代的过程，祝你的项目顺利！
